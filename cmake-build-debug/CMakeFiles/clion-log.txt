@@ -1,0 +1,4 @@
+/snap/clion/178/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/snap/clion/178/bin/ninja/linux/ninja -DCMAKE_C_COMPILER=/usr/bin/gcc -DCMAKE_CXX_COMPILER=/bin/c++ -G Ninja /home/tima/Coding/C&C++/file-manager
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/tima/Coding/C&C++/file-manager/cmake-build-debug
