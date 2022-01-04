@@ -5,8 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool is_path_valid(const char* path)
-{
+bool is_path_valid(const char* path) {
+    if (!path)
+        return false;
+
     size_t len = strlen(path);
     if (len == 0 || len > MAX_PATH_LENGTH)
         return false;
@@ -23,6 +25,10 @@ bool is_path_valid(const char* path)
         name_start = name_end + 1;
     }
     return true;
+}
+
+bool is_delimiter(const char* path) {
+    return strcmp(path, "/") == 0;
 }
 
 const char* split_path(const char* path, char* component)
@@ -117,3 +123,4 @@ char* make_map_contents_string(HashMap* map)
     free(keys);
     return result;
 }
+

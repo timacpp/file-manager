@@ -121,7 +121,7 @@ build rebuild_cache: phony CMakeFiles/rebuild_cache.util
 #############################################
 # Order-only phony target for main
 
-build cmake_object_order_depends_target_main: phony || cmake_object_order_depends_target_HashMap cmake_object_order_depends_target_Tree cmake_object_order_depends_target_err
+build cmake_object_order_depends_target_main: phony || cmake_object_order_depends_target_HashMap cmake_object_order_depends_target_Tree cmake_object_order_depends_target_err cmake_object_order_depends_target_path
 
 build CMakeFiles/main.dir/main.c.o: C_COMPILER__main_Debug /home/tima/Coding/C&C++/file-manager/main.c || cmake_object_order_depends_target_main
   DEP_FILE = CMakeFiles/main.dir/main.c.o.d
@@ -137,9 +137,9 @@ build CMakeFiles/main.dir/main.c.o: C_COMPILER__main_Debug /home/tima/Coding/C&C
 #############################################
 # Link the executable main
 
-build main: C_EXECUTABLE_LINKER__main_Debug CMakeFiles/main.dir/main.c.o | libTree.a libHashMap.a liberr.a || libHashMap.a libTree.a liberr.a
+build main: C_EXECUTABLE_LINKER__main_Debug CMakeFiles/main.dir/main.c.o | libTree.a libHashMap.a liberr.a libpath.a || libHashMap.a libTree.a liberr.a libpath.a
   FLAGS = -g -Wall -Wextra -Wno-sign-compare -g
-  LINK_LIBRARIES = libTree.a  libHashMap.a  liberr.a  -lpthread
+  LINK_LIBRARIES = libTree.a  libHashMap.a  liberr.a  libpath.a  -lpthread
   OBJECT_DIR = CMakeFiles/main.dir
   POST_BUILD = :
   PRE_LINK = :

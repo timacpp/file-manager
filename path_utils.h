@@ -1,3 +1,4 @@
+#pragma once
 #include <stdbool.h>
 
 #include "HashMap.h"
@@ -13,6 +14,8 @@
 // Valid paths have length at most MAX_PATH_LENGTH (and at least 1). Valid folder names are are
 // sequences of 'a'-'z' ASCII characters, of length from 1 to MAX_FOLDER_NAME_LENGTH.
 bool is_path_valid(const char* path);
+
+bool is_delimiter(const char* path);
 
 // Return the subpath obtained by removing the first component.
 // Args:

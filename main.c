@@ -1,10 +1,13 @@
-#include "HashMap.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include "Tree.h"
+#include "HashMap.h"
+#include "path_utils.h"
 
 void print_map(HashMap* map) {
     const char* key = NULL;
@@ -17,19 +20,19 @@ void print_map(HashMap* map) {
     printf("\n");
 }
 
-
-int main(void)
-{
-    HashMap* map = hmap_new();
-    hmap_insert(map, "a", hmap_new());
-    print_map(map);
-
-    HashMap* child = (HashMap*)hmap_get(map, "a");
-    hmap_free(child);
-    hmap_remove(map, "a");
-    print_map(map);
-
-    hmap_free(map);
+int main(void) {
+    Tree* tree = tree_new();
+    tree_create(tree, "/a/");
+    tree_create(tree, "/a/b/");
+    tree_remove(tree, "/a/b/");
+    char* content = tree_list(tree, "/a/");
+    if (!content) {
+        printf("content is empty\n");
+    } else {
+        printf("%s\n", content);
+        free(content);
+    }
+    tree_free(tree);
 
     return 0;
 }
