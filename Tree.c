@@ -87,6 +87,10 @@ extern int tree_create_valid(Tree* tree, const char* path) {
 
 extern int tree_erase_child(Tree* tree, const char* folder) {
     Tree* child = hmap_get(tree->children, folder);
+
+    if (!child)
+        return ENOENT;
+
     bool empty_child = (hmap_size(child->children) == 0);
 
     if (empty_child) {
@@ -129,6 +133,9 @@ int tree_remove(Tree* tree, const char* path) {
 }
 
 int tree_move(Tree* tree, const char* source, const char* target) {
+    if (is_delimiter(source))
+        return EBUSY;
+
     bool correct_paths = is_path_valid(source) && is_path_valid(target);
     return correct_paths ? tree_move_valid(tree, source, target) : EINVAL;
 }
