@@ -1,11 +1,13 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
+#include "err.h"
 #include "Tree.h"
 #include "HashMap.h"
 #include "path_utils.h"
+
+#define CHECK_PTR_FATAL(ptr, msg) if (!ptr) fatal(msg)
 
 struct Tree {
     HashMap* children;
@@ -13,10 +15,10 @@ struct Tree {
 
 Tree* tree_new() {
     Tree* root = malloc(sizeof(Tree));
+    CHECK_PTR_FATAL(root, "Failed to allocate memory for root");
 
-    if (root) {
-        root->children = hmap_new();
-    }
+    root->children = hmap_new();
+    CHECK_PTR_FATAL(root->children, "Failed to allocate memory for children");
 
     return root;
 }
@@ -37,52 +39,51 @@ void tree_free(Tree* tree) {
     free(tree);
 }
 
-extern Tree* tree_get_child_folder(Tree* tree, const char* path,
-                                   const char** subpath, char* folder) {
-    if (subpath) {
-        *subpath = split_path(path, folder);
-    } else {
-        split_path(path, folder);
+extern int tree_advance_safe(Tree** tree, const char* path, char* folder) {
+    char folder_buf[MAX_FOLDER_NAME_LENGTH + 1];
+    const char* subpath = path;
+
+    while (*tree && !is_delimiter(subpath)) {
+        subpath = split_path(subpath, folder_buf);
+        *tree = hmap_get((*tree)->children, folder_buf);
     }
 
-    return hmap_get(tree->children, folder);
-}
-
-extern Tree* tree_get_child(Tree* tree, const char* path,
-                            const char** subpath, char* folder) {
-    if (folder) {
-        return tree_get_child_folder(tree, path, subpath, folder);
-    } else {
-        char folder_buf[MAX_FOLDER_NAME_LENGTH + 1];
-        return tree_get_child_folder(tree, path, subpath, folder_buf);
+    if (*tree && folder) {
+        folder_copy(folder, folder_buf);
     }
+
+    return *tree ? 0 : ENOENT;
 }
 
-extern char* tree_list_valid(Tree* tree, const char* path) {
-    if (!tree)
-        return NULL;
+extern int tree_advance(Tree** tree, const char* path, char* folder) {
+    if (!path || !is_path_valid(path))
+        return EINVAL;
 
-    const char* subpath = NULL;
-    Tree* child = tree_get_child(tree, path, &subpath, NULL);
+    return tree_advance_safe(tree, path, folder);
+}
 
-    return is_delimiter(path) ? make_map_contents_string(tree->children)
-                              : tree_list_valid(child, subpath);
+extern int tree_advance_to_parent(Tree** tree, const char* path, char* folder) {
+    if (!path || !is_path_valid(path))
+        return EINVAL;
+
+    const char* subpath = make_path_to_parent(path, folder);
+    return subpath ? tree_advance_safe(tree, subpath, NULL) : ENOENT;
+}
+
+char* tree_list(Tree* tree, const char* path) {
+    int err = tree_advance(&tree, path, NULL);
+    return err == 0 ? make_map_contents_string(tree->children) : NULL;
 }
 
 extern int tree_add_child(Tree* tree, const char* folder) {
-    return hmap_insert(tree->children, folder, tree_new()) ? 0 : EEXIST;
+    bool child_unique = hmap_insert(tree->children, folder, tree_new());
+    return child_unique ? 0 : EEXIST;
 }
 
-extern int tree_create_valid(Tree* tree, const char* path) {
-    if (!tree)
-        return ENOENT;
-
-    const char* subpath = NULL;
+int tree_create(Tree* tree, const char* path) {
     char folder[MAX_FOLDER_NAME_LENGTH + 1];
-    Tree* child = tree_get_child(tree, path, &subpath, folder);
-
-    return is_delimiter(subpath) ? tree_add_child(tree, folder)
-                                 : tree_create_valid(child, subpath);
+    int err = tree_advance_to_parent(&tree, path, folder);
+    return err == 0 ? tree_add_child(tree, folder) : err;
 }
 
 extern int tree_erase_child(Tree* tree, const char* folder) {
@@ -90,54 +91,31 @@ extern int tree_erase_child(Tree* tree, const char* folder) {
 
     if (!child)
         return ENOENT;
+    if (hmap_size(child->children) > 0)
+        return ENOTEMPTY;
 
-    bool empty_child = (hmap_size(child->children) == 0);
+    tree_free(child);
+    hmap_remove(tree->children, folder);
 
-    if (empty_child) {
-        tree_free(child);
-        hmap_remove(tree->children, folder);
-    }
-
-    return empty_child ? 0 : ENOTEMPTY;
-}
-
-extern int tree_remove_valid(Tree* tree, const char* path) {
-    if (!tree)
-        return ENOENT;
-
-    const char* subpath = NULL;
-    char folder[MAX_FOLDER_NAME_LENGTH + 1];
-    Tree* child = tree_get_child(tree, path, &subpath, folder);
-
-    return is_delimiter(subpath) ? tree_erase_child(tree, folder)
-                                 : tree_remove_valid(child, subpath);
-}
-
-extern int tree_move_valid(Tree* tree, const char* path, const char* target) {
     return 0;
 }
 
-char* tree_list(Tree* tree, const char* path) {
-    return is_path_valid(path) ? tree_list_valid(tree, path) : NULL;
-}
-
-int tree_create(Tree* tree, const char* path) {
-    return is_path_valid(path) ? tree_create_valid(tree, path) : EINVAL;
-}
-
 int tree_remove(Tree* tree, const char* path) {
-    if (is_delimiter(path))
-        return EBUSY;
-
-    return is_path_valid(path) ? tree_remove_valid(tree, path) : EINVAL;
+    char folder[MAX_FOLDER_NAME_LENGTH + 1];
+    int err = tree_advance_to_parent(&tree, path, folder);
+    return err == 0 ? tree_erase_child(tree, folder) : err;
 }
 
 int tree_move(Tree* tree, const char* source, const char* target) {
     if (is_delimiter(source))
         return EBUSY;
 
-    bool correct_paths = is_path_valid(source) && is_path_valid(target);
-    return correct_paths ? tree_move_valid(tree, source, target) : EINVAL;
+    int source_err = 0; // Get child of source
+
+    int target_err = 0; // Get parent of target
+
+    if (source_err || target_err) // TODO: backtracking
+        return source_err ? source_err : target_err;
+
+//    return tree_add_child();
 }
-
-

@@ -6,9 +6,6 @@
 #include <string.h>
 
 bool is_path_valid(const char* path) {
-    if (!path)
-        return false;
-
     size_t len = strlen(path);
     if (len == 0 || len > MAX_PATH_LENGTH)
         return false;
@@ -124,3 +121,12 @@ char* make_map_contents_string(HashMap* map)
     return result;
 }
 
+char* folder_copy(char* dest, const char* src) {
+    size_t len = strlen(src);
+    assert(len >= 1 && len <= MAX_FOLDER_NAME_LENGTH);
+
+    strncpy(dest, src, len);
+    dest[len] = '\0';
+
+    return dest;
+}
