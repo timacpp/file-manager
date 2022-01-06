@@ -13,85 +13,116 @@ struct Tree {
     HashMap* children;
 };
 
-Tree* tree_new() {
+static Tree* tree_new_populated(HashMap* content) {
     Tree* root = malloc(sizeof(Tree));
-    CHECK_PTR_FATAL(root, "Failed to allocate memory for root");
+    CHECK_PTR_FATAL(root, "Failed allocation for root in tree_new.");
 
-    root->children = hmap_new();
-    CHECK_PTR_FATAL(root->children, "Failed to allocate memory for children");
+    root->children = content;
 
     return root;
+}
+
+Tree* tree_new() {
+    return tree_new_populated(hmap_new());
+}
+
+static void tree_free_children(Tree* tree) {
+    void* child;
+    const char* folder;
+    HashMapIterator it = hmap_iterator(tree->children);
+
+    while (hmap_next(tree->children, &it, &folder, &child)) {
+        tree_free(child);
+    }
 }
 
 void tree_free(Tree* tree) {
     if (!tree)
         return;
 
-    void* children;
-    const char* folder;
-    HashMapIterator it = hmap_iterator(tree->children);
-
-    while (hmap_next(tree->children, &it, &folder, &children)) {
-        tree_free(children);
+    if (tree->children) {
+        tree_free_children(tree);
+        hmap_free(tree->children);
     }
 
-    hmap_free(tree->children);
     free(tree);
 }
 
-extern int tree_advance_safe(Tree** tree, const char* path, char* folder) {
-    char folder_buf[MAX_FOLDER_NAME_LENGTH + 1];
+static Tree* tree_get_child(const Tree* tree, const char* folder) {
+    return tree ? hmap_get(tree->children, folder) : NULL;
+}
+
+static int tree_extract_safe(Tree* tree, Tree** subtree, const char* path) {
+    *subtree = tree;
     const char* subpath = path;
+    char folder_buf[MAX_FOLDER_NAME_LENGTH + 1];
 
-    while (*tree && !is_delimiter(subpath)) {
+    while (*subtree && !is_delimiter(subpath)) {
         subpath = split_path(subpath, folder_buf);
-        *tree = hmap_get((*tree)->children, folder_buf);
+        *subtree = tree_get_child(*subtree, folder_buf);
     }
 
-    if (*tree && folder) {
-        folder_copy(folder, folder_buf);
-    }
-
-    return *tree ? 0 : ENOENT;
+    return *subtree ? 0 : ENOENT;
 }
 
-extern int tree_advance(Tree** tree, const char* path, char* folder) {
+static int tree_extract(Tree* tree, Tree** subtree, const char* path) {
     if (!path || !is_path_valid(path))
         return EINVAL;
 
-    return tree_advance_safe(tree, path, folder);
+    return tree_extract_safe(tree, subtree, path);
 }
 
-extern int tree_advance_to_parent(Tree** tree, const char* path, char* folder) {
+static int tree_extract_parent(Tree* tree, Tree** parent,
+                               const char* path, char* folder) {
     if (!path || !is_path_valid(path))
         return EINVAL;
 
-    const char* subpath = make_path_to_parent(path, folder);
-    return subpath ? tree_advance_safe(tree, subpath, NULL) : ENOENT;
+    char* subpath = make_path_to_parent(path, folder);
+    int err = (subpath ? tree_extract_safe(tree, parent, subpath) : EBUSY);
+
+    free(subpath);
+
+    return err;
 }
 
 char* tree_list(Tree* tree, const char* path) {
-    int err = tree_advance(&tree, path, NULL);
-    return err == 0 ? make_map_contents_string(tree->children) : NULL;
+    Tree* subtree;
+    int err = tree_extract(tree, &subtree, path);
+    return err == 0 ? make_map_contents_string(subtree->children) : NULL;
 }
 
-extern int tree_add_child(Tree* tree, const char* folder) {
-    bool child_unique = hmap_insert(tree->children, folder, tree_new());
-    return child_unique ? 0 : EEXIST;
+static int tree_add_child(const Tree* tree, const char* folder, HashMap* content) {
+    if (tree_get_child(tree, folder)) {
+        hmap_free(content);
+        return EEXIST;
+    }
+
+    Tree* child = tree_new_populated(content);
+    hmap_insert(tree->children, folder, child);
+
+    return 0;
+}
+
+static int tree_create_populated(Tree* tree, const char* path, HashMap* content) {
+    CHECK_PTR_FATAL(content, "Content of a folder cannot be null.");
+
+    Tree* subtree;
+    char folder[MAX_FOLDER_NAME_LENGTH + 1];
+    int err = tree_extract_parent(tree, &subtree, path, folder);
+
+    return err == 0 ? tree_add_child(subtree, folder, content) : err;
 }
 
 int tree_create(Tree* tree, const char* path) {
-    char folder[MAX_FOLDER_NAME_LENGTH + 1];
-    int err = tree_advance_to_parent(&tree, path, folder);
-    return err == 0 ? tree_add_child(tree, folder) : err;
+    return tree_create_populated(tree, path, hmap_new());
 }
 
-extern int tree_erase_child(Tree* tree, const char* folder) {
-    Tree* child = hmap_get(tree->children, folder);
+static int tree_erase_child(const Tree* tree, const char* folder) {
+    Tree* child = tree_get_child(tree, folder);
 
     if (!child)
         return ENOENT;
-    if (hmap_size(child->children) > 0)
+    if (child->children && hmap_size(child->children) > 0)
         return ENOTEMPTY;
 
     tree_free(child);
@@ -101,21 +132,33 @@ extern int tree_erase_child(Tree* tree, const char* folder) {
 }
 
 int tree_remove(Tree* tree, const char* path) {
+    Tree* subtree;
     char folder[MAX_FOLDER_NAME_LENGTH + 1];
-    int err = tree_advance_to_parent(&tree, path, folder);
-    return err == 0 ? tree_erase_child(tree, folder) : err;
+    int err = tree_extract_parent(tree, &subtree, path, folder);
+
+    return err == 0 ? tree_erase_child(subtree, folder) : err;
 }
 
 int tree_move(Tree* tree, const char* source, const char* target) {
-    if (is_delimiter(source))
-        return EBUSY;
+    if (strcmp(source, target) == 0)
+        return 0;
 
-    int source_err = 0; // Get child of source
+    int err;
+    Tree* src_tree;
+    Tree* src_parent;
+    char src_folder[MAX_FOLDER_NAME_LENGTH + 1];
 
-    int target_err = 0; // Get parent of target
+    if ((err = tree_extract_parent(tree, &src_parent, source, src_folder)))
+        return err;
 
-    if (source_err || target_err) // TODO: backtracking
-        return source_err ? source_err : target_err;
+    if ((src_tree = tree_get_child(src_parent, src_folder)) == NULL)
+        return ENOENT;
 
-//    return tree_add_child();
+    if ((err = tree_create_populated(tree, target, src_tree->children)))
+        return err;
+
+    src_tree->children = NULL;
+    tree_erase_child(src_parent, src_folder);
+
+    return 0;
 }
