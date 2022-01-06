@@ -24,10 +24,6 @@ bool is_path_valid(const char* path) {
     return true;
 }
 
-bool is_delimiter(const char* path) {
-    return strcmp(path, "/") == 0;
-}
-
 const char* split_path(const char* path, char* component)
 {
     const char* subpath = strchr(path + 1, '/'); // Pointer to second '/' character.
@@ -119,14 +115,4 @@ char* make_map_contents_string(HashMap* map)
     *position = '\0';
     free(keys);
     return result;
-}
-
-char* folder_copy(char* dest, const char* src) {
-    size_t len = strlen(src);
-    assert(len >= 1 && len <= MAX_FOLDER_NAME_LENGTH);
-
-    strncpy(dest, src, len);
-    dest[len] = '\0';
-
-    return dest;
 }

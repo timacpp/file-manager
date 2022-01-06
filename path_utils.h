@@ -15,8 +15,6 @@
 // sequences of 'a'-'z' ASCII characters, of length from 1 to MAX_FOLDER_NAME_LENGTH.
 bool is_path_valid(const char* path);
 
-bool is_delimiter(const char* path);
-
 // Return the subpath obtained by removing the first component.
 // Args:
 // - `path`: should be a valid path (see `is_path_valid`).
