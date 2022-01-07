@@ -8,6 +8,7 @@
 #include "path_utils.h"
 
 #define CHECK_PTR_FATAL(ptr, msg) if (!ptr) fatal(msg)
+#define ECYCLE -1 /* Attempt to move a directory to its subdirectory. */
 
 struct Tree {
     HashMap* children;
@@ -15,9 +16,10 @@ struct Tree {
 
 static Tree* tree_new_populated(HashMap* content) {
     Tree* root = malloc(sizeof(Tree));
-    CHECK_PTR_FATAL(root, "Failed allocation for root in tree_new.");
+    CHECK_PTR_FATAL(root, "Failed allocation for root.");
 
-    root->children = content;
+    root->children = (content ? content : hmap_new());
+    CHECK_PTR_FATAL(root->children, "Failed allocation for root children.");
 
     return root;
 }
@@ -57,7 +59,7 @@ static int tree_extract_safe(Tree* tree, Tree** subtree, const char* path) {
     const char* subpath = path;
     char folder_buf[MAX_FOLDER_NAME_LENGTH + 1];
 
-    while (*subtree && !is_delimiter(subpath)) {
+    while (*subtree && strcmp(subpath, "/") != 0) {
         subpath = split_path(subpath, folder_buf);
         *subtree = tree_get_child(*subtree, folder_buf);
     }
@@ -66,23 +68,26 @@ static int tree_extract_safe(Tree* tree, Tree** subtree, const char* path) {
 }
 
 static int tree_extract(Tree* tree, Tree** subtree, const char* path) {
-    if (!path || !is_path_valid(path))
+    if (!is_path_valid(path))
         return EINVAL;
 
     return tree_extract_safe(tree, subtree, path);
 }
 
-static int tree_extract_parent(Tree* tree, Tree** parent,
-                               const char* path, char* folder) {
-    if (!path || !is_path_valid(path))
-        return EINVAL;
-
+static int tree_extract_parent_safe(Tree* tree, Tree** parent, const char* path, char* folder) {
     char* subpath = make_path_to_parent(path, folder);
     int err = (subpath ? tree_extract_safe(tree, parent, subpath) : EBUSY);
 
     free(subpath);
 
     return err;
+}
+
+static int tree_extract_parent(Tree* tree, Tree** parent, const char* path, char* folder) {
+    if (!is_path_valid(path))
+        return EINVAL;
+
+    return tree_extract_parent_safe(tree, parent, path, folder);
 }
 
 char* tree_list(Tree* tree, const char* path) {
@@ -92,10 +97,8 @@ char* tree_list(Tree* tree, const char* path) {
 }
 
 static int tree_add_child(const Tree* tree, const char* folder, HashMap* content) {
-    if (tree_get_child(tree, folder)) {
-        hmap_free(content);
+    if (tree_get_child(tree, folder))
         return EEXIST;
-    }
 
     Tree* child = tree_new_populated(content);
     hmap_insert(tree->children, folder, child);
@@ -103,18 +106,15 @@ static int tree_add_child(const Tree* tree, const char* folder, HashMap* content
     return 0;
 }
 
-static int tree_create_populated(Tree* tree, const char* path, HashMap* content) {
-    CHECK_PTR_FATAL(content, "Content of a folder cannot be null.");
-
+int tree_create(Tree* tree, const char* path) {
     Tree* subtree;
     char folder[MAX_FOLDER_NAME_LENGTH + 1];
     int err = tree_extract_parent(tree, &subtree, path, folder);
 
-    return err == 0 ? tree_add_child(subtree, folder, content) : err;
-}
+    if (err == EBUSY)
+        return EEXIST;
 
-int tree_create(Tree* tree, const char* path) {
-    return tree_create_populated(tree, path, hmap_new());
+    return err == 0 ? tree_add_child(subtree, folder, NULL) : err;
 }
 
 static int tree_erase_child(const Tree* tree, const char* folder) {
@@ -139,26 +139,47 @@ int tree_remove(Tree* tree, const char* path) {
     return err == 0 ? tree_erase_child(subtree, folder) : err;
 }
 
-int tree_move(Tree* tree, const char* source, const char* target) {
-    if (strcmp(source, target) == 0)
-        return 0;
+static int tree_move_child(Tree* source_parent, Tree* target_parent,
+                           const char* source_folder, const char* target_folder) {
+    bool same_folder = (strcmp(source_folder, target_folder) == 0);
+    Tree* source_tree = tree_get_child(source_parent, source_folder);
 
-    int err;
-    Tree* src_tree;
-    Tree* src_parent;
-    char src_folder[MAX_FOLDER_NAME_LENGTH + 1];
-
-    if ((err = tree_extract_parent(tree, &src_parent, source, src_folder)))
-        return err;
-
-    if ((src_tree = tree_get_child(src_parent, src_folder)) == NULL)
+    if (!source_tree)
         return ENOENT;
+    if (source_parent == target_parent && same_folder)
+        return 0;
+    if (tree_add_child(target_parent, target_folder, source_tree->children))
+        return EEXIST;
 
-    if ((err = tree_create_populated(tree, target, src_tree->children)))
-        return err;
-
-    src_tree->children = NULL;
-    tree_erase_child(src_parent, src_folder);
+    source_tree->children = NULL;
+    tree_erase_child(source_parent, source_folder);
 
     return 0;
+}
+
+static int tree_move_non_root(Tree* tree, const char* source, const char* target) {
+    int err;
+    Tree* source_parent, *target_parent;
+    char source_folder[MAX_FOLDER_NAME_LENGTH + 1];
+    char target_folder[MAX_FOLDER_NAME_LENGTH + 1];
+
+    if ((err = tree_extract_parent_safe(tree, &source_parent, source, source_folder)))
+        return err;
+    if ((err = tree_extract_parent_safe(tree, &target_parent, target, target_folder)))
+        return err;
+
+    return tree_move_child(source_parent, target_parent, source_folder, target_folder);
+}
+
+int tree_move(Tree* tree, const char* source, const char* target) {
+    if (!is_path_valid(source) || !is_path_valid(target))
+        return EINVAL;
+    if (strcmp(source, "/") == 0)
+        return EBUSY;
+    if (strcmp(target, "/") == 0)
+        return EEXIST;
+    if (is_subpath(source, target))
+        return ECYCLE;
+
+    return tree_move_non_root(tree, source, target);
 }

@@ -15,6 +15,8 @@
 // sequences of 'a'-'z' ASCII characters, of length from 1 to MAX_FOLDER_NAME_LENGTH.
 bool is_path_valid(const char* path);
 
+bool is_subpath(const char* subpath, const char* path); // TODO
+
 // Return the subpath obtained by removing the first component.
 // Args:
 // - `path`: should be a valid path (see `is_path_valid`).
@@ -50,5 +52,3 @@ const char** make_map_contents_array(HashMap* map);
 // The result has no trailing comma. An empty map yields an empty string.
 // The caller should free the result.
 char* make_map_contents_string(HashMap* map);
-
-char* folder_copy(char* dest, const char* src);

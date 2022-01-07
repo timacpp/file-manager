@@ -6,6 +6,9 @@
 #include <string.h>
 
 bool is_path_valid(const char* path) {
+    if (!path)
+        return false;
+
     size_t len = strlen(path);
     if (len == 0 || len > MAX_PATH_LENGTH)
         return false;
@@ -36,6 +39,18 @@ const char* split_path(const char* path, char* component)
         component[len] = '\0';
     }
     return subpath;
+}
+
+bool is_subpath(const char* subpath, const char* path) {
+    char folder[MAX_FOLDER_NAME_LENGTH + 1];
+    char subfolder[MAX_FOLDER_NAME_LENGTH + 1];
+
+    do {
+        path = split_path(path, folder);
+        subpath = split_path(subpath, subfolder);
+    } while (subpath && path && strcmp(folder, subfolder) == 0);
+
+    return path && !subpath;
 }
 
 char* make_path_to_parent(const char* path, char* component)
@@ -98,6 +113,7 @@ char* make_map_contents_string(HashMap* map)
         // Note we can't just return "", as it can't be free'd.
         char* result = malloc(1);
         *result = '\0';
+        free(keys);
         return result;
     }
 
