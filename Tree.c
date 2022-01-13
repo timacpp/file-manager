@@ -12,46 +12,20 @@
 
 #define CHECK_PTR(ptr) \
     if (!ptr)          \
-        fatal("allocation failed in ", __FUNCTION__)
+        fatal(__FUNCTION__)
 
-#define CHECK_ERR(err)  \
-    if (err != 0)       \
+#define CHECK_ERR(err)      \
+    if ((errno = err) != 0) \
         syserr(__FUNCTION__, err)
 
-#define RETURN_IF_ERR(err) \
+#define RETURN_ERR(err) \
     if (err != 0)          \
         return err
 
 struct Tree {
     HashMap* children;
-    pthread_cond_t reader;
-    pthread_cond_t writer;
-    pthread_mutex_t mutex;
+    pthread_rwlock_t lock;
 };
-
-static int tree_lock(Tree* tree) {
-    return pthread_mutex_lock(&tree->mutex);
-}
-
-static int tree_unlock(Tree* tree) {
-    return pthread_mutex_unlock(&tree->mutex);
-}
-
-static void tree_lock_checked(Tree* tree) {
-    CHECK_ERR(tree_lock(tree));
-}
-
-static void tree_unlock_checked(Tree* tree) {
-    CHECK_ERR(tree_unlock(tree));
-}
-
-static void tree_mutex_init(Tree* tree) {
-    CHECK_ERR(pthread_mutex_init(&tree->mutex, NULL));
-}
-
-static void tree_mutex_destroy(Tree* tree) {
-    CHECK_ERR(pthread_mutex_destroy(&tree->mutex));
-}
 
 static Tree* tree_new_populated(HashMap* content) {
     Tree* root = malloc(sizeof(Tree));
@@ -60,7 +34,7 @@ static Tree* tree_new_populated(HashMap* content) {
     root->children = (content ? content : hmap_new());
     CHECK_PTR(root->children);
 
-    tree_mutex_init(root);
+    CHECK_ERR(pthread_rwlock_init(&root->lock, NULL));
 
     return root;
 }
@@ -69,13 +43,15 @@ Tree* tree_new() {
     return tree_new_populated(NULL);
 }
 
-static void tree_free_children(Tree* tree) {
+static void tree_free_children(Tree* parent) {
     void* child;
     const char* folder;
-    HashMapIterator it = hmap_iterator(tree->children);
+    HashMapIterator it = hmap_iterator(parent->children);
 
-    while (hmap_next(tree->children, &it, &folder, &child)) {
-        tree_free(child);
+    while (hmap_next(parent->children, &it, &folder, &child)) {
+        if (child) {
+            tree_free(child);
+        }
     }
 }
 
@@ -83,29 +59,17 @@ void tree_free(Tree* tree) {
     if (!tree)
         return;
 
-    tree_lock_checked(tree);
-
     if (tree->children) {
         tree_free_children(tree);
         hmap_free(tree->children);
     }
 
-    tree_unlock_checked(tree);
-    tree_lock_checked(tree);
-    tree_mutex_destroy(tree);
-
+    CHECK_ERR(pthread_rwlock_destroy(&tree->lock));
     free(tree);
 }
 
-static Tree* tree_get_child(Tree* tree, const char* folder) {
-    if (!tree)
-        return NULL;
-
-    tree_lock_checked(tree); // TODO: check or NULL?
-    Tree* child = hmap_get(tree->children, folder);
-    tree_unlock_checked(tree);
-
-    return child;
+static Tree* tree_get_child(Tree* parent, const char* folder) {
+    return hmap_get(parent->children, folder);
 }
 
 static int tree_extract_safe(Tree* tree, Tree** subtree, const char* path) {
@@ -115,7 +79,12 @@ static int tree_extract_safe(Tree* tree, Tree** subtree, const char* path) {
 
     while (*subtree && strcmp(subpath, "/") != 0) {
         subpath = split_path(subpath, folder_buf);
-        *subtree = tree_get_child(*subtree, folder_buf);
+
+        CHECK_ERR(pthread_rwlock_rdlock(&(*subtree)->lock));
+        Tree* next_subtree = tree_get_child(*subtree, folder_buf);
+        CHECK_ERR(pthread_rwlock_unlock(&(*subtree)->lock));
+
+        *subtree = next_subtree;
     }
 
     return *subtree ? 0 : ENOENT;
@@ -153,68 +122,62 @@ char* tree_list(Tree* tree, const char* path) {
     if (err != 0)
         return NULL;
 
-    tree_lock_checked(tree); // TODO: check or NULL?
+    CHECK_ERR(pthread_rwlock_rdlock(&subtree->lock));
     char* list = make_map_contents_string(subtree->children);
-    tree_unlock_checked(tree);
+    CHECK_ERR(pthread_rwlock_unlock(&subtree->lock));
 
     return list;
 }
 
-static int tree_add_child(Tree* tree, const char* folder, HashMap* content) {
-    if (tree_get_child(tree, folder))
+static int tree_add_child(Tree* parent, const char* folder, HashMap* content) {
+    if (tree_get_child(parent, folder))
         return EEXIST;
 
-    RETURN_IF_ERR(tree_lock(tree));
-
     Tree* child = tree_new_populated(content);
-    hmap_insert(tree->children, folder, child);
-
-    RETURN_IF_ERR(tree_unlock(tree));
+    hmap_insert(parent->children, folder, child);
 
     return 0;
 }
 
 int tree_create(Tree* tree, const char* path) {
-    Tree* subtree;
+    Tree* parent;
     char folder[MAX_FOLDER_NAME_LENGTH + 1];
-    int err = tree_extract_parent(tree, &subtree, path, folder);
+    int err = tree_extract_parent(tree, &parent, path, folder);
 
-    if (err == EBUSY)
-        return EEXIST;
+    if (err)
+        return err == EBUSY ? EEXIST : err;
 
-    return err == 0 ? tree_add_child(subtree, folder, NULL) : err;
+    RETURN_ERR(pthread_rwlock_wrlock(&parent->lock));
+    err = tree_add_child(parent, folder, NULL);
+    RETURN_ERR(pthread_rwlock_unlock(&parent->lock));
+
+    return err;
 }
 
-static int tree_erase_child(Tree* tree, const char* folder) {
-    Tree* child = tree_get_child(tree, folder);
+static int tree_erase_child(Tree* parent, const char* folder) {
+    Tree* child = tree_get_child(parent, folder);
 
     if (!child)
         return ENOENT;
-
-    RETURN_IF_ERR(tree_lock(child));
-
-    if (child->children && hmap_size(child->children) > 0) {
-        RETURN_IF_ERR(tree_unlock(child));
+    if (child->children && hmap_size(child->children) > 0)
         return ENOTEMPTY;
-    }
-
-    RETURN_IF_ERR(tree_unlock(child));
 
     tree_free(child);
-
-    RETURN_IF_ERR(tree_lock(tree));
-    hmap_remove(tree->children, folder);
-    RETURN_IF_ERR(tree_unlock(tree));
+    hmap_remove(parent->children, folder);
 
     return 0;
 }
 
 int tree_remove(Tree* tree, const char* path) {
-    Tree* subtree;
+    Tree* parent;
     char folder[MAX_FOLDER_NAME_LENGTH + 1];
-    RETURN_IF_ERR(tree_extract_parent(tree, &subtree, path, folder));
+    RETURN_ERR(tree_extract_parent(tree, &parent, path, folder));
 
-    return tree_erase_child(subtree, folder);
+    RETURN_ERR(pthread_rwlock_wrlock(&parent->lock));
+    int err = tree_erase_child(parent, folder);
+    RETURN_ERR(pthread_rwlock_unlock(&parent->lock));
+
+    return err;
 }
 
 static int tree_move_child(Tree* source_parent, Tree* target_parent,
@@ -226,31 +189,35 @@ static int tree_move_child(Tree* source_parent, Tree* target_parent,
         return ENOENT;
     if (source_parent == target_parent && same_folder)
         return 0;
-
-    RETURN_IF_ERR(tree_lock(source_tree));
-
-    if (tree_add_child(target_parent, target_folder, source_tree->children)) {
-        RETURN_IF_ERR(tree_unlock(source_tree));
+    if (tree_add_child(target_parent, target_folder, source_tree->children))
         return EEXIST;
-    }
 
     source_tree->children = NULL;
-    RETURN_IF_ERR(tree_unlock(source_tree));
-
-    tree_erase_child(source_parent, source_folder);
+    RETURN_ERR(tree_erase_child(source_parent, source_folder));
 
     return 0;
 }
 
-static int tree_move_safe(Tree* tree, const char* source, const char* target) {
+static int tree_move_non_root(Tree* tree, const char* source, const char* target) {
     Tree* source_parent, *target_parent;
     char source_folder[MAX_FOLDER_NAME_LENGTH + 1];
     char target_folder[MAX_FOLDER_NAME_LENGTH + 1];
 
-    RETURN_IF_ERR(tree_extract_parent_safe(tree, &source_parent, source, source_folder));
-    RETURN_IF_ERR(tree_extract_parent_safe(tree, &target_parent, target, target_folder));
+    RETURN_ERR(tree_extract_parent_safe(tree, &source_parent, source, source_folder));
+    RETURN_ERR(tree_extract_parent_safe(tree, &target_parent, target, target_folder));
 
-    return tree_move_child(source_parent, target_parent, source_folder, target_folder);
+    RETURN_ERR(pthread_rwlock_wrlock(&tree->lock));
+
+//    RETURN_ERR(pthread_rwlock_wrlock(&source_parent->lock));
+//    RETURN_ERR(pthread_rwlock_wrlock(&target_parent->lock));
+
+    int err = tree_move_child(source_parent, target_parent, source_folder, target_folder);
+
+//    RETURN_ERR(pthread_rwlock_unlock(&target_parent->lock));
+//    RETURN_ERR(pthread_rwlock_unlock(&source_parent->lock));
+    RETURN_ERR(pthread_rwlock_unlock(&tree->lock));
+
+    return err;
 }
 
 int tree_move(Tree* tree, const char* source, const char* target) {
@@ -263,5 +230,5 @@ int tree_move(Tree* tree, const char* source, const char* target) {
     if (is_subpath(source, target))
         return ECYCLE;
 
-    return tree_move_safe(tree, source, target);
+    return tree_move_non_root(tree, source, target);
 }
