@@ -27,6 +27,11 @@ struct Tree {
     pthread_rwlock_t lock;
 };
 
+/**
+ * Creates a new tree with the given children.
+ * If @p content is NULL, creates a new hashmap.
+ * @return pointer to an allocated tree
+ */
 static Tree* tree_new_populated(HashMap* content) {
     Tree* root = malloc(sizeof(Tree));
     CHECK_PTR(root);
@@ -43,6 +48,10 @@ Tree* tree_new() {
     return tree_new_populated(NULL);
 }
 
+/**
+ * Frees memory allocated for children of @p parent.
+ * @param parent non NULL tree
+ */
 static void tree_free_children(Tree* parent) {
     void* child;
     const char* folder;
@@ -68,10 +77,25 @@ void tree_free(Tree* tree) {
     free(tree);
 }
 
+/**
+ * Gives a child of @p parent named @p folder
+ * or NULL if it does not exist.
+ * @param parent tree
+ * @param folder name of folder
+ * @return child or NULL
+ */
 static Tree* tree_get_child(Tree* parent, const char* folder) {
     return hmap_get(parent->children, folder);
 }
 
+/**
+ * Writes a subtree of @p tree located by path @p path to @p subtree.
+ * Assumes @p path is valid and not NULL; @p tree is not NULL.
+ * @param tree root node for search
+ * @param subtree pointer to assign a founded tree
+ * @param path target tree location
+ * @return 0 in case of success and a custom error otherwise
+ */
 static int tree_extract_safe(Tree* tree, Tree** subtree, const char* path) {
     *subtree = tree;
     const char* subpath = path;
@@ -91,12 +115,24 @@ static int tree_extract_safe(Tree* tree, Tree** subtree, const char* path) {
 }
 
 static int tree_extract(Tree* tree, Tree** subtree, const char* path) {
-    if (!is_path_valid(path))
+    if (!path || !is_path_valid(path))
         return EINVAL;
 
     return tree_extract_safe(tree, subtree, path);
 }
 
+/**
+ * Writes a parent to @p parent of tree located by path @p path
+ * starting from @p tree root. Also writes child folder name
+ * to @p folder.
+ * Assumes @p tree is not NULL; @p path is valid and not NULL;
+ * @p folder is a buffer of at least MAX_FOLDER_NAME + 1 size.
+ * @param tree root node for search
+ * @param parent pointer to assign a founded parent
+ * @param path target parent tree location
+ * @param folder buffer to assign a name of child folder
+ * @return 0 in case of success and a custom error otherwise
+ */
 static int tree_extract_parent_safe(Tree* tree, Tree** parent,
                                     const char* path, char* folder) {
     char* subpath = make_path_to_parent(path, folder);
@@ -109,11 +145,12 @@ static int tree_extract_parent_safe(Tree* tree, Tree** parent,
 
 static int tree_extract_parent(Tree* tree, Tree** parent,
                                const char* path, char* folder) {
-    if (!is_path_valid(path))
+    if (!path || !is_path_valid(path))
         return EINVAL;
 
     return tree_extract_parent_safe(tree, parent, path, folder);
 }
+
 
 char* tree_list(Tree* tree, const char* path) {
     Tree* subtree;
@@ -221,7 +258,7 @@ static int tree_move_non_root(Tree* tree, const char* source, const char* target
 }
 
 int tree_move(Tree* tree, const char* source, const char* target) {
-    if (!is_path_valid(source) || !is_path_valid(target))
+    if (!source || !target || !is_path_valid(source) || !is_path_valid(target))
         return EINVAL;
     if (strcmp(source, "/") == 0)
         return EBUSY;

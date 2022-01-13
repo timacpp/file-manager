@@ -6,9 +6,6 @@
 #include <string.h>
 
 bool is_path_valid(const char* path) {
-    if (!path)
-        return false;
-
     size_t len = strlen(path);
     if (len == 0 || len > MAX_PATH_LENGTH)
         return false;

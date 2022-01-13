@@ -15,6 +15,10 @@
 // sequences of 'a'-'z' ASCII characters, of length from 1 to MAX_FOLDER_NAME_LENGTH.
 bool is_path_valid(const char* path);
 
+// Returns whether subpath is a prefix of path.
+// Args:
+// - 'subpath': should be a valid path (see `is_path_valid`).
+// - 'path': should be a valid path (see `is_path_valid`).
 bool is_subpath(const char* subpath, const char* path); // TODO
 
 // Return the subpath obtained by removing the first component.
