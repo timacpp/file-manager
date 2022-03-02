@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "HashMap.h"
+#include "hash.h"
 
 // We fix the number of hash buckets for simplicity.
 #define N_BUCKETS 8

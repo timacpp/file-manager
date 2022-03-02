@@ -1,6 +1,6 @@
 #pragma once
 
-typedef struct Tree Tree; // Let "Tree" mean the same as "struct Tree".
+typedef struct Tree Tree;
 
 Tree* tree_new();
 

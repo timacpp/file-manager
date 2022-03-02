@@ -1,7 +1,7 @@
 /home/tima/Coding/C&C++/file-manager/cmake-build-debug/CMakeFiles/Tree.dir
 /home/tima/Coding/C&C++/file-manager/cmake-build-debug/CMakeFiles/HashMap.dir
 /home/tima/Coding/C&C++/file-manager/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/home/tima/Coding/C&C++/file-manager/cmake-build-debug/CMakeFiles/main.dir
+/home/tima/Coding/C&C++/file-manager/cmake-build-debug/CMakeFiles/example.dir
 /home/tima/Coding/C&C++/file-manager/cmake-build-debug/CMakeFiles/err.dir
 /home/tima/Coding/C&C++/file-manager/cmake-build-debug/CMakeFiles/edit_cache.dir
 /home/tima/Coding/C&C++/file-manager/cmake-build-debug/CMakeFiles/install/strip.dir

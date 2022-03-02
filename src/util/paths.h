@@ -1,7 +1,7 @@
 #pragma once
 #include <stdbool.h>
 
-#include "HashMap.h"
+#include "../hash.h"
 
 // Max length of path (excluding terminating null character).
 #define MAX_PATH_LENGTH 4095

@@ -3,10 +3,10 @@
 #include <string.h>
 #include <pthread.h>
 
-#include "err.h"
-#include "Tree.h"
-#include "HashMap.h"
-#include "path_utils.h"
+#include "util/err.h"
+#include "tree.h"
+#include "hash.h"
+#include "util/paths.h"
 
 #define ECYCLE -1 /* Attempt to move a directory to its subdirectory. */
 
