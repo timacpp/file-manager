@@ -1,8 +1,7 @@
 #pragma once
 
-/* wypisuje informacje o błędnym zakończeniu funkcji systemowej
-i kończy działanie */
+/** Displays errno and ends program */
 extern void syserr(const char* fmt, ...);
 
-/* wypisuje informacje o błędzie i kończy działanie */
+/** Displays text and ends program */
 extern void fatal(const char* fmt, ...);

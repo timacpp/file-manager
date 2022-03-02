@@ -19,11 +19,11 @@ int main(void) {
     /* Renames folder 'a' to 'b' */
     tree_move(tree, "/a/", "/b/");
 
-    /* Creates folder 'c' inside folder 'b' */
-    tree_create(tree, "/b/c/");
-
-    /* Moves folder 'c' from folder 'b' to the root */
-    tree_move(tree, "/b/c/", "/");
+//    /* Creates folder 'c' inside folder 'b' */
+//    tree_create(tree, "/b/c/");
+//
+//    /* Moves folder 'c' from folder 'b' to the root */
+//    tree_move(tree, "/b/c/", "/");
 
     char* content = tree_list(tree, "/a/");
     printf("%s\n", content);
