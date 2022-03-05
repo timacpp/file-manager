@@ -1,4 +1,10 @@
+/** @file
+ * Utilities for parsing folder names.
+ * @date 2022
+*/
+
 #pragma once
+
 #include <stdbool.h>
 
 #include "../hash.h"

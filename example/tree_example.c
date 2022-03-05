@@ -1,10 +1,16 @@
+/** @file
+ * Example usage of file manager.
+ * @author Tymofii Vedmedenko <tv433559@students.mimuw.edu.pl>
+ * @date 2022
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "../src/tree.h"
 
 int main(void) {
-    /* Creates a root folder */
+    /* Creates the root folder */
     Tree* tree = tree_new();
 
     /* Creates folder 'a' inside root folder */
@@ -19,13 +25,14 @@ int main(void) {
     /* Renames folder 'a' to 'b' */
     tree_move(tree, "/a/", "/b/");
 
-//    /* Creates folder 'c' inside folder 'b' */
-//    tree_create(tree, "/b/c/");
-//
-//    /* Moves folder 'c' from folder 'b' to the root */
-//    tree_move(tree, "/b/c/", "/");
+    /* Creates folder 'c' inside folder 'b' */
+    tree_create(tree, "/b/c/");
 
-    char* content = tree_list(tree, "/a/");
+    /* Moves folder 'c' from folder 'b' to the root */
+    tree_move(tree, "/b/c/", "/");
+
+    /* This results in two folders in the root: 'b' and 'c' */
+    char* content = tree_list(tree, "/");
     printf("%s\n", content);
 
     free(content);
