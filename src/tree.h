@@ -6,7 +6,6 @@
 
 #pragma once
 
-/** Tree containing information about root folder (eg. subdirectories) */
 typedef struct Tree Tree;
 
 Tree* tree_new();
